@@ -45,6 +45,9 @@ def main():
 
                     if result == "mode_select":
                         current_screen = "mode_select"
+                    elif result == "2players":
+                        game_page.reset(game_mode="pvp")
+                        current_screen = "game"
                     elif result == "quit":
                         pygame.quit()
                         sys.exit()
@@ -60,19 +63,19 @@ def main():
 
                     elif result == "easy":
 
-                        game_page.reset("easy")
+                        game_page.reset(difficulty="easy", game_mode="ai")
 
                         current_screen = "game"
 
                     elif result == "medium":
 
-                        game_page.reset("medium")
+                        game_page.reset(difficulty="medium", game_mode="ai")
 
                         current_screen = "game"
 
                     elif result == "hard":
 
-                        game_page.reset("hard")
+                        game_page.reset(difficulty="hard", game_mode="ai")
 
                         current_screen = "game"
                 elif current_screen == "game":
