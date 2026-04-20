@@ -18,7 +18,7 @@ from components.modal_elements import (
 )
 from components.setting_icon import draw_gear_icon
 from config import BLACK, BORDER_PINK, WHITE
-from core.AI import AI_DIFFICULTY_SETTINGS, get_ai_move
+from core.AI import AI_DIFFICULTY_SETTINGS, get_ai_move_with_think_time
 from core.board import (
     COLS,
     ROWS,
@@ -43,7 +43,6 @@ HUMAN_PLAYER = 1
 AI_PLAYER = 2
 EMPTY = 0
 
-AI_THINK_DELAY_MS = 300
 TURN_TIME_SECONDS = 120
 
 BACKGROUND = (249, 249, 247)
@@ -117,10 +116,13 @@ class GamePage:
         self.ai_time_left = float(TURN_TIME_SECONDS)
         self.last_tick_ms = pygame.time.get_ticks()
         self.show_reset_confirmation = False
+        self.show_home_confirmation = False
         self.active_modal = None
         self.modal_parent = None
         self.settings_dropdown_open = False
         self.reset_overlay_rects()
+        self.pending_ai_move = None
+        self.ai_think_delay_ms = 10000
 
     def reset_overlay_rects(self):
         self.settings_buttons = {}
@@ -143,7 +145,11 @@ class GamePage:
         width = int(self.screen.get_width() * width_ratio)
         height = int(self.screen.get_height() * height_ratio)
         x = (self.screen.get_width() - width) // 2
-        y = (self.screen.get_height() - height) // 2 if top_ratio is None else int(self.screen.get_height() * top_ratio)
+        y = (
+            (self.screen.get_height() - height) // 2
+            if top_ratio is None
+            else int(self.screen.get_height() * top_ratio)
+        )
         return pygame.Rect(x, y, width, height)
 
     def draw(self):
@@ -174,11 +180,25 @@ class GamePage:
         if self.game_over:
             draw_backdrop(self.screen, 146)
             self._draw_winner_popup(layout, mouse_pos)
+
         if self.show_reset_confirmation:
             self._draw_reset_confirmation(layout, mouse_pos)
 
+        if self.show_home_confirmation:
+            self._draw_home_confirmation(layout, mouse_pos)
+
     def handle_click(self, mouse_pos):
         layout = self._compute_layout()
+
+        if self.show_home_confirmation:
+            rects = self._get_home_dialog_rects(layout)
+            if rects["confirm_button"].collidepoint(mouse_pos):
+                self.show_home_confirmation = False
+                self.ai_turn_started_at = None
+                return "home"
+            elif rects["cancel_button"].collidepoint(mouse_pos):
+                self._close_home_confirmation()
+            return None
 
         if self.show_reset_confirmation:
             rects = self._get_reset_dialog_rects(layout)
@@ -210,8 +230,8 @@ class GamePage:
             return None
 
         if layout["home_button"].collidepoint(mouse_pos):
-            self.ai_turn_started_at = None
-            return "home"
+            self._open_home_confirmation()
+            return None
 
         if layout["settings_button"].collidepoint(mouse_pos):
             self._open_settings_modal()
@@ -231,7 +251,7 @@ class GamePage:
         elapsed = (now - self.last_tick_ms) / 1000 if self.last_tick_ms is not None else 0
         self.last_tick_ms = now
 
-        if self.show_reset_confirmation or self.active_modal:
+        if self.show_reset_confirmation or self.show_home_confirmation or self.active_modal:
             return
 
         if self.game_over:
@@ -257,14 +277,18 @@ class GamePage:
 
         if self.ai_turn_started_at is None:
             self.ai_turn_started_at = now
+            self.pending_ai_move, self.ai_think_delay_ms = get_ai_move_with_think_time(
+                self.board, self.difficulty
+            )
             return
 
-        if now - self.ai_turn_started_at < AI_THINK_DELAY_MS:
+        if now - self.ai_turn_started_at < self.ai_think_delay_ms:
             return
 
-        column = get_ai_move(self.board, self.difficulty)
-        if column is not None:
-            self._apply_move(column, AI_PLAYER)
+        if self.pending_ai_move is not None:
+            self._apply_move(self.pending_ai_move, AI_PLAYER)
+
+        self.pending_ai_move = None
         self.ai_turn_started_at = None
 
     def _open_reset_confirmation(self):
@@ -274,6 +298,17 @@ class GamePage:
 
     def _close_reset_confirmation(self):
         self.show_reset_confirmation = False
+        self.last_tick_ms = pygame.time.get_ticks()
+        if self._is_ai_turn():
+            self.ai_turn_started_at = self.last_tick_ms
+
+    def _open_home_confirmation(self):
+        self.show_home_confirmation = True
+        if self._is_ai_turn():
+            self.ai_turn_started_at = pygame.time.get_ticks()
+
+    def _close_home_confirmation(self):
+        self.show_home_confirmation = False
         self.last_tick_ms = pygame.time.get_ticks()
         if self._is_ai_turn():
             self.ai_turn_started_at = self.last_tick_ms
@@ -329,10 +364,8 @@ class GamePage:
             return
 
         self.current_player = self._other_player(piece)
-        if self._is_ai_turn():
-            self.ai_turn_started_at = pygame.time.get_ticks()
-        else:
-            self.ai_turn_started_at = None
+        self.pending_ai_move = None
+        self.ai_turn_started_at = None
 
     def _find_winning_line(self, player):
         for row in range(ROWS):
@@ -375,7 +408,7 @@ class GamePage:
         top_panel_height = max(72, int(REFERENCE_TOP_PANEL_HEIGHT * scale))
         bottom_panel_height = max(86, int(REFERENCE_BOTTOM_PANEL_HEIGHT * scale))
         icon_size = max(36, int(40 * scale))
-        icon_gap = max(8, int(8 * scale))
+        icon_gap = max(20, int(22 * scale))
 
         board_width = COLS * cell_size
         board_height = ROWS * cell_size
@@ -673,6 +706,39 @@ class GamePage:
             footer_surface.get_rect(center=(layout["screen_width"] // 2, footer_y)),
         )
 
+    def _get_home_dialog_rects(self, layout):
+        dialog_width = max(300, int(340 * layout["scale"]))
+        dialog_height = max(190, int(210 * layout["scale"]))
+        dialog = pygame.Rect(
+            (layout["screen_width"] - dialog_width) // 2,
+            (layout["screen_height"] - dialog_height) // 2,
+            dialog_width,
+            dialog_height,
+        )
+
+        button_width = max(108, int(122 * layout["scale"]))
+        button_height = max(42, int(46 * layout["scale"]))
+        gap = max(10, int(14 * layout["scale"]))
+        button_y = dialog.bottom - button_height - max(18, int(22 * layout["scale"]))
+        cancel_button = pygame.Rect(
+            dialog.centerx - gap - button_width,
+            button_y,
+            button_width,
+            button_height,
+        )
+        confirm_button = pygame.Rect(
+            dialog.centerx + gap,
+            button_y,
+            button_width,
+            button_height,
+        )
+
+        return {
+            "dialog": dialog,
+            "cancel_button": cancel_button,
+            "confirm_button": confirm_button,
+        }
+
     def _get_reset_dialog_rects(self, layout):
         dialog_width = max(300, int(340 * layout["scale"]))
         dialog_height = max(190, int(210 * layout["scale"]))
@@ -706,6 +772,62 @@ class GamePage:
             "confirm_button": confirm_button,
         }
 
+    def _draw_home_confirmation(self, layout, mouse_pos):
+        overlay = pygame.Surface((layout["screen_width"], layout["screen_height"]), pygame.SRCALPHA)
+        overlay.fill(DIALOG_OVERLAY)
+        self.screen.blit(overlay, (0, 0))
+
+        rects = self._get_home_dialog_rects(layout)
+        dialog = rects["dialog"]
+        shadow = dialog.move(0, max(6, int(8 * layout["scale"])))
+
+        pygame.draw.rect(self.screen, DIALOG_SHADOW, shadow, border_radius=18)
+        pygame.draw.rect(self.screen, DIALOG_BG, dialog, border_radius=18)
+        pygame.draw.rect(self.screen, FRAME_BORDER, dialog, width=2, border_radius=18)
+
+        title_font = get_ui_font(self.sf(22), bold=True)
+        body_font = get_ui_font(self.sf(17), bold=False)
+
+        title_text = self.preferences.text("home_confirm_title")
+        title_width = dialog.width - max(50, int(56 * layout["scale"]))
+        title_lines = wrap_text(title_text, title_font, title_width)
+
+        title_y = dialog.top + max(30, int(34 * layout["scale"]))
+        for line in title_lines:
+            surface = title_font.render(line, True, TEXT)
+            self.screen.blit(surface, surface.get_rect(center=(dialog.centerx, title_y)))
+            title_y += surface.get_height() + max(2, int(4 * layout["scale"]))
+
+        body_text = self.preferences.text("home_confirm_body")
+        body_width = dialog.width - max(42, int(48 * layout["scale"]))
+        body_lines = wrap_text(body_text, body_font, body_width)
+
+        body_y = title_y + max(12, int(14 * layout["scale"]))
+        for line in body_lines:
+            surface = body_font.render(line, True, SUBTEXT)
+            self.screen.blit(surface, surface.get_rect(center=(dialog.centerx, body_y)))
+            body_y += surface.get_height() + max(2, int(3 * layout["scale"]))
+
+        draw_modal_button(
+            self.screen,
+            rects["cancel_button"],
+            self.preferences.text("no"),
+            hovered=rects["cancel_button"].collidepoint(mouse_pos),
+            fill_color=CANCEL_FILL,
+            border_color=FRAME_BORDER,
+            font_size=max(15, int(17 * layout["scale"])),
+        )
+        draw_modal_button(
+            self.screen,
+            rects["confirm_button"],
+            self.preferences.text("yes"),
+            hovered=rects["confirm_button"].collidepoint(mouse_pos),
+            fill_color=WARNING,
+            border_color=WARNING,
+            text_color=PANEL,
+            font_size=max(15, int(17 * layout["scale"])),
+        )
+
     def _draw_reset_confirmation(self, layout, mouse_pos):
         overlay = pygame.Surface((layout["screen_width"], layout["screen_height"]), pygame.SRCALPHA)
         overlay.fill(DIALOG_OVERLAY)
@@ -719,8 +841,8 @@ class GamePage:
         pygame.draw.rect(self.screen, DIALOG_BG, dialog, border_radius=18)
         pygame.draw.rect(self.screen, FRAME_BORDER, dialog, width=2, border_radius=18)
 
-        title_font = pygame.font.SysFont("georgia", max(20, int(24 * layout["scale"])), bold=True)
-        body_font = pygame.font.SysFont("segoeui", max(15, int(17 * layout["scale"])))
+        title_font = get_ui_font(self.sf(24), bold=True)
+        body_font = get_ui_font(self.sf(17), bold=False)
 
         title_surface = title_font.render(self.preferences.text("reset_title"), True, TEXT)
         self.screen.blit(title_surface, title_surface.get_rect(center=(dialog.centerx, dialog.top + max(34, int(40 * layout["scale"])))))
@@ -1059,21 +1181,23 @@ class GamePage:
         rects = self._get_winner_popup_rects(layout)
         dialog = rects["dialog"]
 
-        draw_backdrop(self.screen, alpha=146)
-        draw_decorated_panel(
-            self.screen,
-            dialog,
-            outer_width=max(2, self.sx(3)),
-            inner_margin=max(14, self.sx(18)),
-            inner_width=max(1, self.sx(2)),
-        )
+        # Nền mờ nhẹ hơn để vẫn nhìn thấy bàn cờ và nước thắng
+        overlay = pygame.Surface((layout["screen_width"], layout["screen_height"]), pygame.SRCALPHA)
+        overlay.fill((255, 255, 255, 70))
+        self.screen.blit(overlay, (0, 0))
 
-        title_font = get_ui_font(self.sf(28), bold=True)
-        big_font = pygame.font.SysFont("arialblack", self.sf(92), bold=True)
+        # Panel bán trong suốt
+        panel_surface = pygame.Surface((dialog.width, dialog.height), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surface, (255, 255, 255, 120), panel_surface.get_rect(), border_radius=18)
+        pygame.draw.rect(panel_surface, (*BORDER_PINK, 200), panel_surface.get_rect(), width=2, border_radius=18)
+        self.screen.blit(panel_surface, dialog.topleft)
+
+        title_font = get_ui_font(self.sf(24), bold=True)
+        big_font = pygame.font.SysFont("arialblack", self.sf(78), bold=True)
         button_font_size = self.sf(22 if self.preferences.language == "vi" else 24)
 
         title_surface = title_font.render(self._popup_title(), True, TEXT)
-        title_y = dialog.top + int(dialog.h * 0.15)
+        title_y = dialog.top + int(dialog.h * 0.18)
         word_y = dialog.top + int(dialog.h * 0.48)
 
         self.screen.blit(title_surface, title_surface.get_rect(center=(dialog.centerx, title_y)))
@@ -1091,7 +1215,7 @@ class GamePage:
             rects["play_again_button"],
             self.preferences.text("play_again"),
             hovered=rects["play_again_button"].collidepoint(mouse_pos),
-            fill_color=WHITE,
+            fill_color=(255, 255, 255),
             border_color=BORDER_PINK,
             text_color=BLACK,
             font_size=button_font_size,
@@ -1101,7 +1225,7 @@ class GamePage:
             rects["exit_button"],
             self.preferences.text("exit"),
             hovered=rects["exit_button"].collidepoint(mouse_pos),
-            fill_color=WHITE,
+            fill_color=(255, 255, 255),
             border_color=BORDER_PINK,
             text_color=BLACK,
             font_size=button_font_size,

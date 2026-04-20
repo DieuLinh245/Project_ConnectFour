@@ -195,3 +195,68 @@ def get_ai_move(board, difficulty="easy"):
         return random.choice(ordered_columns[:pool_size])
 
     return choose_best_move(board, settings["depth"])
+
+
+def get_ai_move_with_think_time(board, difficulty="easy"):
+    settings = AI_DIFFICULTY_SETTINGS.get(difficulty, AI_DIFFICULTY_SETTINGS["medium"])
+    ordered_columns = order_moves(board, AI_PLAYER)
+
+    if not ordered_columns:
+        return None, 500
+
+    best_col = choose_best_move(board, settings["depth"])
+
+    # Nước đầu tiên của AI
+    ai_moves_count = sum(cell == AI_PLAYER for row in board for cell in row)
+    if ai_moves_count == 0:
+        if difficulty == "easy":
+            return best_col, 4000
+        elif difficulty == "medium":
+            return best_col, 3000
+        else:
+            return best_col, 2000
+
+    # Từ nước thứ 2 trở đi
+    if difficulty == "easy":
+        base_think_time = 1200
+    elif difficulty == "medium":
+        base_think_time = 1800
+    else:
+        base_think_time = 2500
+
+    best_child = simulate_drop(board, best_col, AI_PLAYER)
+    if best_child and check_winner(best_child, AI_PLAYER):
+        return best_col, 700
+
+    must_block = False
+    for col in get_valid_locations(board):
+        human_child = simulate_drop(board, col, HUMAN_PLAYER)
+        if human_child and check_winner(human_child, HUMAN_PLAYER):
+            must_block = True
+            break
+
+    if must_block:
+        return best_col, base_think_time + 500
+
+    scores = []
+    for col in ordered_columns:
+        child = simulate_drop(board, col, AI_PLAYER)
+        if child is None:
+            continue
+        scores.append((score_position(child, AI_PLAYER), col))
+
+    scores.sort(reverse=True)
+
+    if len(scores) >= 2:
+        gap = scores[0][0] - scores[1][0]
+    else:
+        gap = 9999
+
+    if gap >= 80:
+        think_time = base_think_time
+    elif gap >= 30:
+        think_time = base_think_time + 300
+    else:
+        think_time = base_think_time + 600
+
+    return best_col, think_time
