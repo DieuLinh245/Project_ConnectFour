@@ -3,6 +3,7 @@ import pygame
 import sys
 
 from config import WINDOW_WIDTH, WINDOW_HEIGHT
+from core.preferences import GamePreferences
 from screens.home_page import HomePage
 from screens.mode_select_page import ModeSelectPage
 from screens.game_page import GamePage
@@ -16,9 +17,12 @@ def main():
     pygame.display.set_caption("Connect 4")
     clock = pygame.time.Clock()
 
-    home_page = HomePage(screen)
-    mode_select_page = ModeSelectPage(screen)
-    game_page = GamePage(screen)
+    preferences = GamePreferences.load()
+    preferences.apply_audio()
+
+    home_page = HomePage(screen, preferences)
+    mode_select_page = ModeSelectPage(screen, preferences)
+    game_page = GamePage(screen, preferences)
 
     current_screen = "home"
 
@@ -45,6 +49,9 @@ def main():
 
                     if result == "mode_select":
                         current_screen = "mode_select"
+                    elif result == "2players":
+                        game_page.reset(mode="local")
+                        current_screen = "game"
                     elif result == "quit":
                         pygame.quit()
                         sys.exit()

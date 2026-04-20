@@ -1,10 +1,12 @@
 import pygame
 from config import BG_COLOR, BLACK, BASE_WIDTH, BASE_HEIGHT, BORDER_PINK
 from components.button import draw_filled_button, draw_outline_button
+from core.ui_fonts import get_ui_font
 
 class ModeSelectPage:
-    def __init__(self, screen):
+    def __init__(self, screen, preferences):
         self.screen = screen
+        self.preferences = preferences
         self.btn_easy = None
         self.btn_medium = None
         self.btn_hard = None
@@ -23,8 +25,15 @@ class ModeSelectPage:
         return max(16, int(size * min(scale_w, scale_h)))
 
     def draw_top_button(self):
+        button_font_size = self.sf(36 if self.preferences.language == "vi" else 42)
         self.btn_back_1player = draw_filled_button(
-            self.screen, self.sx(24), self.sy(58), self.sx(343), self.sy(112), "1 PLAYER", self.sf(42)
+            self.screen,
+            self.sx(24),
+            self.sy(58),
+            self.sx(343),
+            self.sy(112),
+            self.preferences.text("home_1player"),
+            button_font_size,
         )
 
     def draw_corner(self, x, y, pos):
@@ -59,9 +68,10 @@ class ModeSelectPage:
         self.draw_corner(x + self.sx(22), y + h - self.sy(22), "bl")
         self.draw_corner(x + w - self.sx(22), y + h - self.sy(22), "br")
 
-        title_font = pygame.font.SysFont("timesnewroman", self.sf(72), bold=True)
-        title = title_font.render("LEVELS", True, BLACK)
-        self.screen.blit(title, (self.sx(640), self.sy(215)))
+        title_font = get_ui_font(self.sf(72), bold=True, serif=True)
+        title = title_font.render(self.preferences.text("levels_title"), True, BLACK)
+        title_rect = title.get_rect(center=(x + w // 2, self.sy(250)))
+        self.screen.blit(title, title_rect)
 
         line_w = max(2, self.sx(4))
         pygame.draw.line(self.screen, BLACK, (self.sx(430), self.sy(236)), (self.sx(590), self.sy(236)), line_w)
@@ -75,10 +85,42 @@ class ModeSelectPage:
         pygame.draw.rect(self.screen, BLACK, (self.sx(1077), self.sy(229), s, s), width=b)
 
     def draw_buttons(self):
-        self.btn_easy = draw_outline_button(self.screen, self.sx(560), self.sy(324), self.sx(385), self.sy(104), "EASY", self.sf(42))
-        self.btn_medium = draw_outline_button(self.screen, self.sx(560), self.sy(477), self.sx(385), self.sy(104), "MEDIUM", self.sf(42))
-        self.btn_hard = draw_outline_button(self.screen, self.sx(560), self.sy(631), self.sx(385), self.sy(104), "HARD", self.sf(42))
-        self.btn_exit = draw_outline_button(self.screen, self.sx(666), self.sy(785), self.sx(173), self.sy(95), "EXIT", self.sf(40))
+        self.btn_easy = draw_outline_button(
+            self.screen,
+            self.sx(560),
+            self.sy(324),
+            self.sx(385),
+            self.sy(104),
+            self.preferences.text("easy"),
+            self.sf(42),
+        )
+        self.btn_medium = draw_outline_button(
+            self.screen,
+            self.sx(560),
+            self.sy(477),
+            self.sx(385),
+            self.sy(104),
+            self.preferences.text("medium"),
+            self.sf(42),
+        )
+        self.btn_hard = draw_outline_button(
+            self.screen,
+            self.sx(560),
+            self.sy(631),
+            self.sx(385),
+            self.sy(104),
+            self.preferences.text("hard"),
+            self.sf(42),
+        )
+        self.btn_exit = draw_outline_button(
+            self.screen,
+            self.sx(666),
+            self.sy(785),
+            self.sx(173),
+            self.sy(95),
+            self.preferences.text("exit"),
+            self.sf(40),
+        )
 
     def draw(self):
         self.screen.fill(BG_COLOR)

@@ -1,24 +1,29 @@
 import pygame
-import random
 
 from config import BG_COLOR, BLACK, PINK, WHITE, BLUE, YELLOW, BASE_WIDTH, BASE_HEIGHT
 from core.board import create_board, is_valid_column, get_next_open_row, drop_piece, board_full, COLS, ROWS
 from core.rule_checker import check_winner
 from components.button import draw_filled_button
 from core.AI import get_ai_move
+from core.ui_fonts import get_ui_font
+
+
 class GamePage:
-    def __init__(self, screen, difficulty="easy"):
+    def __init__(self, screen, preferences, difficulty="easy"):
         self.screen = screen
+        self.preferences = preferences
         self.difficulty = difficulty
+        self.mode = "ai"
         self.board = create_board()
         self.current_player = 1
         self.game_over = False
         self.winner_text = ""
         self.btn_exit = None
 
-    def reset(self, difficulty=None):
+    def reset(self, difficulty=None, mode="ai"):
         if difficulty is not None:
             self.difficulty = difficulty
+        self.mode = mode
         self.board = create_board()
         self.current_player = 1
         self.game_over = False
@@ -36,18 +41,23 @@ class GamePage:
         return max(16, int(size * min(scale_w, scale_h)))
 
     def draw_title(self):
-        font = pygame.font.SysFont("timesnewroman", self.sf(60), bold=True)
+        font = get_ui_font(self.sf(60), bold=True, serif=True)
         text = font.render("CONNECT 4", True, BLACK)
         rect = text.get_rect(center=(self.screen.get_width() // 2, self.sy(70)))
         self.screen.blit(text, rect)
 
     def draw_status(self):
-        font = pygame.font.SysFont("arial", self.sf(28), bold=True)
+        font = get_ui_font(self.sf(28), bold=True)
 
         if self.game_over:
             text = self.winner_text
+        elif self.mode == "local":
+            if self.current_player == 1:
+                text = self.preferences.text("status_player1_turn")
+            else:
+                text = self.preferences.text("status_player2_turn")
         else:
-            text = "YOUR TURN" if self.current_player == 1 else "AI TURN"
+            text = self.preferences.text("status_your_turn") if self.current_player == 1 else self.preferences.text("status_ai_turn")
 
         label = font.render(text, True, BLACK)
         rect = label.get_rect(center=(self.screen.get_width() // 2, self.sy(140)))
@@ -60,7 +70,7 @@ class GamePage:
             self.sy(70),
             self.sx(180),
             self.sy(70),
-            "EXIT",
+            self.preferences.text("exit"),
             self.sf(30)
         )
 
@@ -116,7 +126,7 @@ class GamePage:
         return col
 
     def make_ai_move(self):
-        if self.game_over:
+        if self.game_over or self.mode != "ai":
             return
 
         col = get_ai_move(self.board, self.difficulty)
@@ -130,10 +140,10 @@ class GamePage:
 
                 if check_winner(self.board, 2):
                     self.game_over = True
-                    self.winner_text = "AI WIN!"
+                    self.winner_text = self.preferences.text("status_ai_win")
                 elif board_full(self.board):
                     self.game_over = True
-                    self.winner_text = "DRAW!"
+                    self.winner_text = self.preferences.text("status_draw")
                 else:
                     self.current_player = 1
 
@@ -144,7 +154,7 @@ class GamePage:
         if self.game_over:
             return None
 
-        if self.current_player != 1:
+        if self.mode == "ai" and self.current_player != 1:
             return None
 
         col = self.get_clicked_column(mouse_pos)
@@ -154,16 +164,24 @@ class GamePage:
         if is_valid_column(self.board, col):
             row = get_next_open_row(self.board, col)
             if row is not None:
-                drop_piece(self.board, row, col, 1)
+                active_player = self.current_player
+                drop_piece(self.board, row, col, active_player)
 
-                if check_winner(self.board, 1):
+                if check_winner(self.board, active_player):
                     self.game_over = True
-                    self.winner_text = "YOU WIN!"
+                    if self.mode == "local":
+                        winner_key = "status_player1_win" if active_player == 1 else "status_player2_win"
+                    else:
+                        winner_key = "status_you_win"
+                    self.winner_text = self.preferences.text(winner_key)
                 elif board_full(self.board):
                     self.game_over = True
-                    self.winner_text = "DRAW!"
+                    self.winner_text = self.preferences.text("status_draw")
                 else:
-                    self.current_player = 2
-                    self.make_ai_move()
+                    if self.mode == "ai":
+                        self.current_player = 2
+                        self.make_ai_move()
+                    else:
+                        self.current_player = 2 if self.current_player == 1 else 1
 
         return None
