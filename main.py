@@ -3,6 +3,7 @@ import pygame
 import sys
 
 from config import WINDOW_WIDTH, WINDOW_HEIGHT
+from core.preferences import GamePreferences
 from screens.home_page import HomePage
 from screens.mode_select_page import ModeSelectPage
 from screens.game_page import GamePage
@@ -15,10 +16,11 @@ def main():
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Connect 4")
     clock = pygame.time.Clock()
+    preferences = GamePreferences()
 
-    home_page = HomePage(screen)
-    mode_select_page = ModeSelectPage(screen)
-    game_page = GamePage(screen)
+    home_page = HomePage(screen, preferences)
+    mode_select_page = ModeSelectPage(screen, preferences)
+    game_page = GamePage(screen, preferences)
 
     current_screen = "home"
 
